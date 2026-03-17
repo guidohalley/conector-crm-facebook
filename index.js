@@ -6,7 +6,6 @@
 
 const express = require('express');
 const https = require('https');
-const http = require('http');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,10 +45,9 @@ app.get('/webhook', (req, res) => {
  */
 async function fetchLeadFromFacebook(leadgenId) {
   const url = `https://graph.facebook.com/v21.0/${leadgenId}?access_token=${FB_PAGE_TOKEN}&fields=field_data`;
-  const client = url.startsWith('https') ? https : http;
 
   return new Promise((resolve, reject) => {
-    client.get(url, (res) => {
+    https.get(url, (res) => {
       let data = '';
       res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
@@ -101,46 +99,44 @@ function extractLeadFields(fieldData) {
  */
 async function createPersonInTwenty(nameValue, lastNameValue, emailValue) {
   const personData = {
-    firstName: nameValue || 'Lead',
-    lastName: lastNameValue || 'Facebook',
+    name: {
+      name: {
+        firstName: nameValue || 'Lead',
+        lastName: lastNameValue || 'Facebook',
+      },
+    },
     emails: { primaryEmail: emailValue },
   };
 
   console.log('JSON enviado a Twenty:', JSON.stringify(personData));
 
-  const url = new URL('/rest/people', TWENTY_API_URL);
-  const body = JSON.stringify(personData);
+  const url = new URL('/rest/people', TWENTY_API_URL).toString();
 
-  return new Promise((resolve, reject) => {
-    const client = url.protocol === 'https:' ? https : http;
-    const options = {
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname + url.search,
+  try {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
         Authorization: `Bearer ${TWENTY_API_KEY}`,
       },
-    };
-
-    const req = client.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(JSON.parse(data || '{}'));
-        } else {
-          reject(new Error(`Twenty API error ${res.statusCode}: ${data}`));
-        }
-      });
+      body: JSON.stringify(personData),
     });
 
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
+    const data = await response.json().catch(() => ({}));
+
+    if (response.ok) {
+      console.log('Respuesta de Twenty:', response.status, data);
+      return data;
+    } else {
+      console.error('Error detallado de Twenty:', data);
+      throw new Error(`Twenty API error ${response.status}: ${JSON.stringify(data)}`);
+    }
+  } catch (error) {
+    if (!error.message?.includes('Twenty API error')) {
+      console.error('Error detallado de Twenty:', error.message);
+    }
+    throw error;
+  }
 }
 
 /**
