@@ -69,32 +69,47 @@ async function fetchLeadFromFacebook(leadgenId) {
 }
 
 /**
- * Extrae email y full_name del array field_data de Facebook
+ * Extrae nameValue, lastNameValue y emailValue del array field_data de Facebook.
+ * Busca los campos por su propiedad .name.
  */
 function extractLeadFields(fieldData) {
-  if (!Array.isArray(fieldData)) return { email: null, fullName: null };
+  const result = { nameValue: null, lastNameValue: null, emailValue: null };
 
-  let email = null;
-  let fullName = null;
+  if (!Array.isArray(fieldData)) return result;
 
   for (const field of fieldData) {
     const value = field.values?.[0];
-    if (field.name === 'email' && value) email = value;
-    if (field.name === 'full_name' && value) fullName = value;
+    if (!value) continue;
+
+    const name = field.name;
+    if (name === 'first_name') result.nameValue = value;
+    else if (name === 'last_name') result.lastNameValue = value;
+    else if (name === 'full_name') {
+      if (!result.nameValue || !result.lastNameValue) {
+        const parts = String(value).trim().split(/\s+/);
+        if (!result.nameValue) result.nameValue = parts[0] || null;
+        if (!result.lastNameValue) result.lastNameValue = parts.slice(1).join(' ') || null;
+      }
+    } else if (name === 'email') result.emailValue = value;
   }
 
-  return { email, fullName };
+  return result;
 }
 
 /**
  * Crea una persona en Twenty CRM
  */
-async function createPersonInTwenty(firstName, primaryEmail) {
+async function createPersonInTwenty(nameValue, lastNameValue, emailValue) {
+  const personData = {
+    firstName: nameValue || 'Lead',
+    lastName: lastNameValue || 'Facebook',
+    emails: { primaryEmail: emailValue },
+  };
+
+  console.log('JSON enviado a Twenty:', JSON.stringify(personData));
+
   const url = new URL('/rest/people', TWENTY_API_URL);
-  const body = JSON.stringify({
-    firstName: firstName || 'Lead sin nombre',
-    emails: { primaryEmail: primaryEmail || '' },
-  });
+  const body = JSON.stringify(personData);
 
   return new Promise((resolve, reject) => {
     const client = url.protocol === 'https:' ? https : http;
@@ -149,15 +164,18 @@ app.post('/webhook', async (req, res) => {
 
       try {
         const leadData = await fetchLeadFromFacebook(leadgenId);
-        const { email, fullName } = extractLeadFields(leadData.field_data);
+        console.log(`Lead ${leadgenId} field_data recibido:`, JSON.stringify(leadData.field_data));
+        const { nameValue, lastNameValue, emailValue } = extractLeadFields(
+          leadData.field_data
+        );
 
-        if (!email) {
+        if (!emailValue) {
           console.warn(`Lead ${leadgenId} sin email, omitiendo`);
           continue;
         }
 
-        await createPersonInTwenty(fullName || email.split('@')[0], email);
-        console.log(`Lead ${leadgenId} sincronizado en Twenty: ${email}`);
+        await createPersonInTwenty(nameValue, lastNameValue, emailValue);
+        console.log(`Lead ${leadgenId} sincronizado en Twenty: ${emailValue}`);
       } catch (err) {
         console.error(`Error procesando lead ${leadgenId}:`, err.message);
       }
