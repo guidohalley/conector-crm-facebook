@@ -100,17 +100,17 @@ function extractLeadFields(fieldData) {
 async function createPersonInTwenty(nameValue, lastNameValue, emailValue) {
   const personData = {
     name: {
-      name: {
-        firstName: nameValue || 'Lead',
-        lastName: lastNameValue || 'Facebook',
-      },
+      firstName: nameValue || 'Lead',
+      lastName: lastNameValue || 'Facebook',
     },
-    emails: { primaryEmail: emailValue },
+    emails: {
+      primaryEmail: emailValue,
+    },
   };
 
   console.log('JSON enviado a Twenty:', JSON.stringify(personData));
 
-  const url = new URL('/rest/people', TWENTY_API_URL).toString();
+  const url = `${process.env.TWENTY_API_URL}/people`;
 
   try {
     const response = await fetch(url, {
@@ -143,6 +143,7 @@ async function createPersonInTwenty(nameValue, lastNameValue, emailValue) {
  * POST /webhook - Recibe notificaciones de nuevos leads desde Facebook
  */
 app.post('/webhook', async (req, res) => {
+  console.log('Payload webhook recibido:', JSON.stringify(req.body, null, 2));
   res.status(200).send('EVENT_RECEIVED');
 
   if (req.body.object !== 'page') return;
